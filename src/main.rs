@@ -32,6 +32,7 @@ fn main() {
             environment: win,
             food_exist: false,
             snake: Snake::new(50.0, 50.0),
+            game_over: false,
         })
         .expect("launch failed");
 }

@@ -115,4 +115,20 @@ impl Snake {
         let blk = self.tail.clone().unwrap();
         self.body.push_back(blk);
     }
+
+    pub fn overlap_tail(&self, x: f64, y: f64) -> bool {
+        let mut c = 0;
+        for block in &self.body {
+            if x == block.x && y == block.y {
+                return true;
+            }
+
+            c += 1;
+            if c == self.body.len() - 1 {
+                break;
+            }
+        }
+
+        return false;
+    }
 }

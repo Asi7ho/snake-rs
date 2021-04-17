@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 use crate::game::{environment::Environment, snake::Direction, snake::Snake};
-use crate::game::{BLOCK_SIZE, FOOD_COLOR, MOVING_PERIOD, SNAKE_COLOR};
+use crate::game::{
+    BLOCK_SIZE, FOOD_COLOR, GAME_OVER_COLOR, MOVING_PERIOD, RESTART_TIME, SNAKE_COLOR,
+};
 use druid::{Data, Lens, Rect, RenderContext, Size, TimerToken, Widget};
 
 // App Data
@@ -10,6 +12,7 @@ pub struct AppData {
     pub environment: Environment,
     pub snake: Snake,
     pub food_exist: bool,
+    pub game_over: bool,
 }
 
 impl AppData {
@@ -28,8 +31,32 @@ impl AppData {
     }
 
     pub fn update_snake(&mut self, dir: Option<Direction>) {
-        self.snake.move_forward(dir);
-        self.eating_apple();
+        if self.check_bounds(dir) {
+            self.snake.move_forward(dir);
+            self.eating_apple();
+        } else {
+            self.game_over = true;
+        }
+    }
+
+    pub fn check_bounds(&self, dir: Option<Direction>) -> bool {
+        let (next_x, next_y) = self.snake.head_next(dir);
+
+        if self.snake.overlap_tail(next_x, next_y) {
+            return false;
+        }
+
+        return next_x > -BLOCK_SIZE
+            && next_y > -BLOCK_SIZE
+            && next_x < self.environment.width
+            && next_y < self.environment.height;
+    }
+
+    pub fn restart(&mut self) {
+        self.snake = Snake::new(50.0, 50.0);
+        self.game_over = false;
+        self.food_exist = false;
+        self.environment = Environment::new(self.environment.width, self.environment.height);
     }
 }
 
@@ -58,8 +85,25 @@ impl Widget<AppData> for GameWidget {
                 self.timer_id = ctx.request_timer(deadline);
             }
             druid::Event::Timer(id) => {
+                if data.game_over {
+                    let waiting_time = Instant::now();
+                    let deadline = Duration::from_millis(data.iter_interval());
+                    self.timer_id = ctx.request_timer(deadline);
+                    if waiting_time - self.last_update > Duration::from_secs_f64(RESTART_TIME) {
+                        data.restart();
+                    }
+                    ctx.request_paint();
+                    return;
+                }
+
                 if !data.food_exist {
                     data.environment.add_food();
+                    while data
+                        .snake
+                        .overlap_tail(data.environment.food_x, data.environment.food_y)
+                    {
+                        data.environment.add_food();
+                    }
                     data.food_exist = true;
                     ctx.request_paint();
                 }
@@ -73,6 +117,10 @@ impl Widget<AppData> for GameWidget {
                 }
             }
             druid::Event::KeyUp(k) => {
+                if data.game_over {
+                    return;
+                }
+
                 let dir = match k.key {
                     druid::keyboard_types::Key::ArrowDown => Some(Direction::Down),
                     druid::keyboard_types::Key::ArrowLeft => Some(Direction::Left),
@@ -126,6 +174,11 @@ impl Widget<AppData> for GameWidget {
     }
 
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &AppData, _env: &druid::Env) {
+        if data.game_over {
+            let rect = Rect::new(0.0, 0.0, data.environment.width, data.environment.height);
+            ctx.fill(rect, &GAME_OVER_COLOR);
+        }
+
         for block in &data.snake.body {
             let block = Rect::new(
                 block.x as f64,
